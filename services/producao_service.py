@@ -21,7 +21,7 @@ def listar_producao(data_ini=None, data_fim=None):
     return query_df(sql + ' ORDER BY p.data DESC,m.nome', params)
 
 def resumo_por_maquina(data_ini=None, data_fim=None):
-    sql = 'SELECT m.nome AS maquina,SUM(p.meta) AS meta,SUM(p.quantidade_produzida) AS produzido,SUM(p.refugo) AS refugo,SUM(p.retrabalho) AS retrabalho,SUM(p.horas_disponiveis) AS horas_disponiveis FROM producao p JOIN maquinas m ON m.id=p.maquina_id WHERE 1=1'
+    sql = 'SELECT m.nome AS maquina,SUM(p.meta) AS meta,SUM(p.quantidade_produzida) AS produzido,SUM(p.refugo) AS refugo,SUM(p.retrabalho) AS retrabalho,SUM(p.horas_disponiveis) AS horas_disponiveis,SUM(p.horas_paradas) AS horas_paradas FROM producao p JOIN maquinas m ON m.id=p.maquina_id WHERE 1=1'
     params = {}
     if data_ini:
         sql += ' AND p.data >= :data_ini'
@@ -32,7 +32,7 @@ def resumo_por_maquina(data_ini=None, data_fim=None):
     return query_df(sql + ' GROUP BY m.nome ORDER BY m.nome', params)
 
 def resumo_diario(data_ini=None, data_fim=None):
-    sql = 'SELECT p.data,SUM(p.meta) AS meta,SUM(p.quantidade_produzida) AS produzido,SUM(p.refugo) AS refugo,SUM(p.retrabalho) AS retrabalho FROM producao p WHERE 1=1'
+    sql = 'SELECT p.data,SUM(p.meta) AS meta,SUM(p.quantidade_produzida) AS produzido,SUM(p.refugo) AS refugo,SUM(p.retrabalho) AS retrabalho,SUM(p.horas_disponiveis) AS horas_disponiveis,SUM(p.horas_paradas) AS horas_paradas FROM producao p WHERE 1=1'
     params = {}
     if data_ini:
         sql += ' AND p.data >= :data_ini'
@@ -41,3 +41,28 @@ def resumo_diario(data_ini=None, data_fim=None):
         sql += ' AND p.data <= :data_fim'
         params["data_fim"] = str(data_fim)
     return query_df(sql + ' GROUP BY p.data ORDER BY p.data', params)
+
+def uptime_por_maquina(data_ini=None, data_fim=None):
+    sql = '''
+    SELECT 
+        m.nome AS maquina,
+        SUM(p.horas_disponiveis) AS horas_disponiveis,
+        SUM(p.horas_paradas) AS horas_paradas,
+        CASE 
+            WHEN SUM(p.horas_disponiveis) > 0 
+            THEN ((SUM(p.horas_disponiveis) - SUM(p.horas_paradas)) / SUM(p.horas_disponiveis)) * 100
+            ELSE 0
+        END AS uptime
+    FROM producao p
+    JOIN maquinas m ON m.id = p.maquina_id
+    WHERE 1=1
+    '''
+    params = {}
+    if data_ini:
+        sql += ' AND p.data >= :data_ini'
+        params["data_ini"] = str(data_ini)
+    if data_fim:
+        sql += ' AND p.data <= :data_fim'
+        params["data_fim"] = str(data_fim)
+    sql += ' GROUP BY m.nome ORDER BY m.nome'
+    return query_df(sql, params)
