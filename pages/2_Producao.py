@@ -6,20 +6,18 @@ from services.producao_service import (
     listar_producao,
     resumo_por_maquina,
     resumo_diario,
-    excluir_producao
+    excluir_producao,
+    uptime_por_maquina
 )
-from components.graficos import bar, line
+from components.graficos import bar
 from utils.helpers import to_excel_bytes
 
 st.title("Produção")
 maquinas = get_maquinas()
 produtos = get_produtos()
 
-tab1, tab2, tab3 = st.tabs(["Lançamento", "Consulta / exclusão", "Indicadores"])
+tab1, tab2, tab3, tab4 = st.tabs(["Lançamento", "Consulta / exclusão", "Indicadores", "Uptime"])
 
-# =========================
-# TAB 1 - LANÇAMENTO
-# =========================
 with tab1:
     with st.form("f_producao", clear_on_submit=True):
         c1, c2, c3 = st.columns(3)
@@ -43,51 +41,23 @@ with tab1:
             if maq and prod:
                 maquina_id = int(maquinas.loc[maquinas["nome"] == maq, "id"].iloc[0])
                 produto_id = int(produtos.loc[produtos["descricao"] == prod, "id"].iloc[0])
-
-                inserir_producao(
-                    data,
-                    maquina_id,
-                    produto_id,
-                    meta,
-                    qtd,
-                    hd,
-                    hp,
-                    ref,
-                    retr,
-                    obs
-                )
+                inserir_producao(data, maquina_id, produto_id, meta, qtd, hd, hp, ref, retr, obs)
                 st.success("Registro de produção salvo com sucesso.")
             else:
                 st.warning("Selecione a máquina e o produto.")
 
-# =========================
-# TAB 2 - CONSULTA / EXCLUSÃO
-# =========================
 with tab2:
     c1, c2 = st.columns(2)
     di = c1.date_input("Data inicial", value=date.today() - timedelta(days=30), key="prod_cons_ini")
     df = c2.date_input("Data final", value=date.today(), key="prod_cons_fim")
-
     dados = listar_producao(di, df)
     st.dataframe(dados, use_container_width=True, hide_index=True)
 
     if not dados.empty:
-        st.download_button(
-            "Baixar Excel",
-            data=to_excel_bytes(dados),
-            file_name="producao.xlsx"
-        )
-
+        st.download_button("Baixar Excel", data=to_excel_bytes(dados), file_name="producao.xlsx")
         st.markdown("### Excluir registro")
-        registro_id = st.selectbox(
-            "Selecione o ID do registro para excluir",
-            dados["id"].tolist(),
-            key="prod_excluir_id"
-        )
-        confirmar = st.checkbox(
-            "Confirmo que desejo excluir o registro selecionado",
-            key="prod_confirma_exclusao"
-        )
+        registro_id = st.selectbox("Selecione o ID do registro para excluir", dados["id"].tolist(), key="prod_excluir_id")
+        confirmar = st.checkbox("Confirmo que desejo excluir o registro selecionado", key="prod_confirma_exclusao")
 
         if st.button("Excluir registro de produção", type="primary"):
             if confirmar:
@@ -97,12 +67,8 @@ with tab2:
             else:
                 st.warning("Marque a confirmação antes de excluir.")
 
-# =========================
-# TAB 3 - INDICADORES
-# =========================
 with tab3:
     st.subheader("Indicadores de produção")
-
     c1, c2 = st.columns(2)
     di = c1.date_input("Data inicial", value=date.today() - timedelta(days=30), key="prod_ind_ini")
     df = c2.date_input("Data final", value=date.today(), key="prod_ind_fim")
@@ -110,60 +76,44 @@ with tab3:
     maq = resumo_por_maquina(di, df)
     dia = resumo_diario(di, df)
 
-    # -------------------------
-    # 1) Produção por máquina
-    # -------------------------
     if not maq.empty:
-        st.plotly_chart(
-            bar(
-                maq,
-                "maquina",
-                "produzido",
-                "Produção por máquina"
-            ),
-            use_container_width=True
-        )
+        st.plotly_chart(bar(maq, "maquina", "produzido", "Produção por máquina"), use_container_width=True)
 
-    # -------------------------
-    # 2) Meta x realizado por máquina
-    # -------------------------
-    if not maq.empty:
         meta_real_maquina = maq[["maquina", "meta", "produzido"]].melt(
             id_vars="maquina",
             var_name="tipo",
             value_name="valor"
         )
-
         st.plotly_chart(
-            bar(
-                meta_real_maquina,
-                "maquina",
-                "valor",
-                "Meta x realizado por máquina",
-                color="tipo",
-                barmode="group"
-            ),
+            bar(meta_real_maquina, "maquina", "valor", "Meta x realizado por máquina", color="tipo", barmode="group"),
             use_container_width=True
         )
 
-    # -------------------------
-    # 3) Meta x realizado por dia
-    # -------------------------
     if not dia.empty:
         meta_real_dia = dia[["data", "meta", "produzido"]].melt(
             id_vars="data",
             var_name="tipo",
             value_name="valor"
         )
-
         st.plotly_chart(
-            bar(
-                meta_real_dia,
-                "data",
-                "valor",
-                "Meta x realizado por dia",
-                color="tipo",
-                barmode="group"
-            ),
+            bar(meta_real_dia, "data", "valor", "Meta x realizado por dia", color="tipo", barmode="group"),
             use_container_width=True
         )
+
+with tab4:
+    st.subheader("Uptime por máquina")
+    c1, c2 = st.columns(2)
+    di = c1.date_input("Data inicial", value=date.today() - timedelta(days=30), key="uptime_ini")
+    df = c2.date_input("Data final", value=date.today(), key="uptime_fim")
+
+    up = uptime_por_maquina(di, df)
+
+    if up.empty:
+        st.info("Sem dados de produção no período para calcular uptime.")
+    else:
+        st.dataframe(up, use_container_width=True, hide_index=True)
+        st.plotly_chart(
+            bar(up, "maquina", "uptime", "Uptime por máquina (%)"),
+            use_container_width=True
+        )
+        st.caption("Fórmula: uptime = ((horas disponíveis - horas paradas) / horas disponíveis) × 100")
